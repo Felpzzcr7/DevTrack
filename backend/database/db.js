@@ -19,4 +19,18 @@ CREATE TABLE IF NOT EXISTS users (
 )
 `);
 
+db.run(`
+  CREATE TABLE IF NOT EXISTS study_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    technology TEXT NOT NULL,
+    hours REAL NOT NULL,
+    description TEXT,
+    date DATE NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )
+`);
+
 module.exports = db;
+

@@ -54,7 +54,7 @@ exports.login = (req, res) => {
     const token = jwt.sign(
       { id: user.id, email: user.email },
       "segredo_super_secreto",
-      { expiresIn: "1h" }
+      { expiresIn: "30d" }
     );
 
     res.json({
