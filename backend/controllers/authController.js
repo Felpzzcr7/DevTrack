@@ -59,7 +59,8 @@ exports.login = (req, res) => {
 
     res.json({
       message: "Login realizado com sucesso",
-      token
+      token,
+      name: user.name
     });
 
   });

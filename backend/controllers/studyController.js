@@ -114,9 +114,8 @@ exports.deleteStudy = (req, res) => {
 exports.getDashboardStats = (req, res) => {
   const userId = req.user.id;
 
-  // Pega todas as sessões de estudo da mais recente para a mais antiga
   const query = `
-    SELECT date, hours FROM study_sessions 
+    SELECT date, hours, technology FROM study_sessions 
     WHERE user_id = ? 
     ORDER BY date DESC
   `;
@@ -129,6 +128,10 @@ exports.getDashboardStats = (req, res) => {
     let totalHours = 0;
     let hoursToday = 0;
 
+    //agrupar as horas por dia e por linguagem
+    const hoursPerDay = {}; 
+    const techCount = {};   
+
       // Cria a data atual e recua 3 horas para alinhar com o fuso do Brasil 
     const hoje = new Date();
     hoje.setHours(hoje.getHours() - 3);
@@ -139,7 +142,7 @@ exports.getDashboardStats = (req, res) => {
     // Array para guardar datas únicas
     const uniqueDates = [];
 
-    // loop nos estudos para calcular as horas e pegar  datas
+    // loop para calcular as horas e pegar  datas
     rows.forEach(row => {
       totalHours += row.hours; // Soma todas as horas da vida do usuário
       
@@ -151,7 +154,32 @@ exports.getDashboardStats = (req, res) => {
       if (!uniqueDates.includes(row.date)) {
         uniqueDates.push(row.date);
       }
+
+      // Agrupa e soma as horas do dia específico deste loop
+      hoursPerDay[row.date] = (hoursPerDay[row.date] || 0) + row.hours;
+
+      //Agrupa e soma as horas da tecnologia específica deste loop
+      if (row.technology) {
+        techCount[row.technology] = (techCount[row.technology] || 0) + row.hours;
+      }
     });
+
+    // Descobre qual dia teve o MAIOR número de horas
+    let maxRecord = 0;
+    const dailyTotals = Object.values(hoursPerDay); // Pega a lista de horas
+    if (dailyTotals.length > 0) {
+      maxRecord = Math.max(...dailyTotals); // Acha o maior número da lista
+    }
+
+    // Descobre qual linguagem acumulou mais horas
+    let topLanguage = 'Nenhuma';
+    let maxTechHours = 0;
+    for (const [tech, hours] of Object.entries(techCount)) {
+      if (hours > maxTechHours) {
+        maxTechHours = hours;
+        topLanguage = tech;
+      }
+    }
 
     // ALGORITMO DO STREAK
     let streak = 0;
@@ -183,7 +211,9 @@ exports.getDashboardStats = (req, res) => {
       totalHours: totalHours,
       hoursToday: hoursToday,
       currentStreak: streak,
-      totalDaysStudied: uniqueDates.length
+      totalDaysStudied: uniqueDates.length,
+      maxRecord: maxRecord,
+      topLanguage: topLanguage
     });
   });
 };
