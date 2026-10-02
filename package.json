@@ -1,0 +1,34 @@
+{
+  "name": "devtrack",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+ "private": true,
+"engines": { "node": "22.x" },
+"scripts": {
+  "dev": "nodemon backend/server.js",
+  "start": "node backend/server.js"
+},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Felpzzcr7/DevTrack.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Felpzzcr7/DevTrack/issues"
+  },
+  "homepage": "https://github.com/Felpzzcr7/DevTrack#readme",
+  "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}

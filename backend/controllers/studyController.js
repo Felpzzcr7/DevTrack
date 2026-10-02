@@ -1,4 +1,4 @@
-const db = require("../database/db");
+const { db } = require("../database/db");
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -16,7 +16,7 @@ const addDays = (dateStr, delta) => {
   return d.toISOString().split("T")[0];
 };
 
-exports.createStudy = (req, res) => {
+exports.createStudy = async (req, res) => {
   const { technology, description, date } = req.body;
   const hours = Number(req.body.hours);
   const userId = req.user.id;
@@ -50,120 +50,114 @@ exports.createStudy = (req, res) => {
       "Uau, que maratona! Mas cuidado com o burnout. Consistência vale mais que exaustão. Seja honesto com seu processo!";
   }
 
-  const query = `
-    INSERT INTO study_sessions (user_id, technology, hours, description, date)
-    VALUES (?, ?, ?, ?, ?)
-  `;
-
-  db.run(query, [userId, String(technology).trim().slice(0, 60), hours, description, date], function (err) {
-    if (err) {
-      return res.status(500).json({ error: "Erro ao salvar o estudo no banco." });
-    }
+  try {
+    const result = await db.execute({
+      sql: `INSERT INTO study_sessions (user_id, technology, hours, description, date)
+            VALUES (?, ?, ?, ?, ?)`,
+      args: [userId, String(technology).trim().slice(0, 60), hours, description ?? null, date],
+    });
 
     res.status(201).json({
       message: "Estudo registrado com sucesso! 🔥",
       alert: warningMessage,
-      studyId: this.lastID,
+      studyId: Number(result.lastInsertRowid),
     });
-  });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro ao salvar o estudo no banco." });
+  }
 };
 
-exports.getStudies = (req, res) => {
-  const query = `
-    SELECT * FROM study_sessions
-    WHERE user_id = ?
-    ORDER BY date DESC, id DESC
-  `;
-
-  db.all(query, [req.user.id], (err, rows) => {
-    if (err) {
-      return res.status(500).json({ error: "Erro ao buscar o histórico de estudos." });
-    }
-    res.json(rows);
-  });
+exports.getStudies = async (req, res) => {
+  try {
+    const result = await db.execute({
+      sql: `SELECT * FROM study_sessions WHERE user_id = ? ORDER BY date DESC, id DESC`,
+      args: [req.user.id],
+    });
+    res.json(result.rows.map((row) => ({ ...row })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro ao buscar o histórico de estudos." });
+  }
 };
 
-exports.deleteStudy = (req, res) => {
-  const query = `
-    DELETE FROM study_sessions
-    WHERE id = ? AND user_id = ?
-  `;
+exports.deleteStudy = async (req, res) => {
+  try {
+    // segurança: só apaga se o estudo pertencer ao usuário logado
+    const result = await db.execute({
+      sql: `DELETE FROM study_sessions WHERE id = ? AND user_id = ?`,
+      args: [req.params.id, req.user.id],
+    });
 
-  // segurança: só apaga se o estudo pertencer ao usuário logado
-  db.run(query, [req.params.id, req.user.id], function (err) {
-    if (err) {
-      return res.status(500).json({ error: "Erro ao tentar deletar o estudo." });
-    }
-
-    if (this.changes === 0) {
+    if (result.rowsAffected === 0) {
       return res.status(404).json({ error: "Estudo não encontrado ou você não tem permissão para apagá-lo." });
     }
-
     res.json({ message: "Estudo deletado com sucesso!" });
-  });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro ao tentar deletar o estudo." });
+  }
 };
 
-exports.getDashboardStats = (req, res) => {
-  const userId = req.user.id;
-
+exports.getDashboardStats = async (req, res) => {
   // O app envia a data local do aparelho (?today=YYYY-MM-DD), assim a ofensiva
   // funciona em qualquer fuso horário. Sem isso, usa o horário do Brasil.
   const todayStr = DATE_RE.test(req.query.today || "") ? req.query.today : brazilToday();
 
-  const query = `
-    SELECT date, hours, technology FROM study_sessions
-    WHERE user_id = ?
-    ORDER BY date DESC
-  `;
-
-  db.all(query, [userId], (err, rows) => {
-    if (err) {
-      return res.status(500).json({ error: "Erro ao calcular estatísticas." });
-    }
-
-    let totalHours = 0;
-    let hoursToday = 0;
-    const hoursPerDay = {};
-    const techCount = {};
-
-    rows.forEach((row) => {
-      totalHours += row.hours;
-      if (row.date === todayStr) hoursToday += row.hours;
-      hoursPerDay[row.date] = (hoursPerDay[row.date] || 0) + row.hours;
-      if (row.technology) {
-        techCount[row.technology] = (techCount[row.technology] || 0) + row.hours;
-      }
+  let rows;
+  try {
+    const result = await db.execute({
+      sql: `SELECT date, hours, technology FROM study_sessions WHERE user_id = ? ORDER BY date DESC`,
+      args: [req.user.id],
     });
+    rows = result.rows;
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Erro ao calcular estatísticas." });
+  }
 
-    const studiedDays = new Set(Object.keys(hoursPerDay));
-    const dailyTotals = Object.values(hoursPerDay);
-    const maxRecord = dailyTotals.length > 0 ? Math.max(...dailyTotals) : 0;
+  let totalHours = 0;
+  let hoursToday = 0;
+  const hoursPerDay = {};
+  const techCount = {};
 
-    let topLanguage = "Nenhuma";
-    let maxTechHours = 0;
-    for (const [tech, hours] of Object.entries(techCount)) {
-      if (hours > maxTechHours) {
-        maxTechHours = hours;
-        topLanguage = tech;
-      }
+  rows.forEach((row) => {
+    totalHours += row.hours;
+    if (row.date === todayStr) hoursToday += row.hours;
+    hoursPerDay[row.date] = (hoursPerDay[row.date] || 0) + row.hours;
+    if (row.technology) {
+      techCount[row.technology] = (techCount[row.technology] || 0) + row.hours;
     }
+  });
 
-    // Ofensiva: conta dias seguidos até hoje. Se hoje ainda não teve estudo,
-    // começa a contar de ontem (a ofensiva só quebra quando um dia inteiro passa em branco).
-    let streak = 0;
-    let cursor = studiedDays.has(todayStr) ? todayStr : addDays(todayStr, -1);
-    while (studiedDays.has(cursor)) {
-      streak++;
-      cursor = addDays(cursor, -1);
+  const studiedDays = new Set(Object.keys(hoursPerDay));
+  const dailyTotals = Object.values(hoursPerDay);
+  const maxRecord = dailyTotals.length > 0 ? Math.max(...dailyTotals) : 0;
+
+  let topLanguage = "Nenhuma";
+  let maxTechHours = 0;
+  for (const [tech, hours] of Object.entries(techCount)) {
+    if (hours > maxTechHours) {
+      maxTechHours = hours;
+      topLanguage = tech;
     }
+  }
 
-    res.json({
-      totalHours,
-      hoursToday,
-      currentStreak: streak,
-      totalDaysStudied: studiedDays.size,
-      maxRecord,
-      topLanguage,
-    });
+  // Ofensiva: conta dias seguidos até hoje. Se hoje ainda não teve estudo,
+  // começa a contar de ontem (a ofensiva só quebra quando um dia inteiro passa em branco).
+  let streak = 0;
+  let cursor = studiedDays.has(todayStr) ? todayStr : addDays(todayStr, -1);
+  while (studiedDays.has(cursor)) {
+    streak++;
+    cursor = addDays(cursor, -1);
+  }
+
+  res.json({
+    totalHours,
+    hoursToday,
+    currentStreak: streak,
+    totalDaysStudied: studiedDays.size,
+    maxRecord,
+    topLanguage,
   });
 };
