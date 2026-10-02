@@ -1,201 +1,167 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { BookOpenText, User, Settings, LogOut, CodeXml, Clock3, AlignLeft, BarChart3, History } from 'lucide-react';
+import { useEffect, useState } from 'react'
+import { Flame } from 'lucide-react'
+import Heatmap, { HeatLegend } from '../components/Heatmap'
+import Notice from '../components/Notice'
+import { useMediaQuery } from '../hooks/useMediaQuery'
+import { api, addDays, fmtHours, getUserName, greeting, hoursByDate, hoursByTech, toISODate } from '../api'
+
+const QUICK_HOURS = [0.5, 1, 2, 3]
+
+// lista de estudos + estatísticas (a data local é enviada para a ofensiva valer em qualquer fuso)
+const fetchAll = () => Promise.all([api('/studies'), api(`/studies/stats?today=${toISODate()}`)])
 
 export default function Aprendizado() {
-  const navigate = useNavigate();
-  const userName = localStorage.getItem('userName') || 'Dev';
+  const firstName = getUserName().split(' ')[0]
+  const wide = useMediaQuery('(min-width: 768px)')
+  const weeks = wide ? 26 : 16 // mais semanas em tela larga para os quadrados não ficarem enormes
 
-  const [technology, setTechnology] = useState('');
-  const [hours, setHours] = useState('');
-  const [description, setDescription] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [studies, setStudies] = useState([])
+  const [streak, setStreak] = useState(0)
+  const [technology, setTechnology] = useState('')
+  const [hours, setHours] = useState('')
+  const [description, setDescription] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [notice, setNotice] = useState(null) // { type, text }
 
-
-  const [weeklyHours, setWeeklyHours] = useState([0, 0, 0, 0, 0, 0, 0]);
-
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    navigate('/');
-  };
+  const refresh = async () => {
+    const [list, stats] = await fetchAll()
+    setStudies(list)
+    setStreak(stats.currentStreak)
+  }
 
   useEffect(() => {
-    const fetchChartData = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const response = await fetch("http://localhost:3000/studies", {
-          headers: { "Authorization": `Bearer ${token}` }
-        });
+    let alive = true
+    fetchAll()
+      .then(([list, stats]) => {
+        if (!alive) return
+        setStudies(list)
+        setStreak(stats.currentStreak)
+      })
+      .catch(console.error)
+    return () => { alive = false }
+  }, [])
 
-        if (response.ok) {
-          const estudos = await response.json();
-          processarDadosDoGrafico(estudos);
-        }
-      } catch (error) {
-        console.error("Erro ao carregar gráfico:", error);
-      }
-    };
+  const byDate = hoursByDate(studies)
+  const todayStr = toISODate()
+  const todayHours = byDate[todayStr] || 0
+  const topTechs = hoursByTech(studies).slice(0, 5).map((t) => t.name)
 
-    fetchChartData();
-  }, []);
-
-
-  const processarDadosDoGrafico = (estudos) => {
-    const horasPorDia = [0, 0, 0, 0, 0, 0, 0]; 
-    const hoje = new Date();
-
-    estudos.forEach(estudo => {
-      const dataEstudo = new Date(estudo.date + 'T00:00:00');
-      const diffDias = Math.floor((hoje - dataEstudo) / (1000 * 60 * 60 * 24));
-
-  
-      if (diffDias >= 0 && diffDias < 7) {
-        let diaSemana = dataEstudo.getDay(); 
-        let indiceAjustado = diaSemana === 0 ? 6 : diaSemana - 1;
-        horasPorDia[indiceAjustado] += estudo.hours;
-      }
-    });
-
-    setWeeklyHours(horasPorDia);
-  };
+  const week = Array.from({ length: 7 }, (_, i) => {
+    const d = addDays(new Date(), i - 6)
+    return { iso: toISODate(d), label: d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '') }
+  })
+  const weekMax = Math.max(4, ...week.map((d) => byDate[d.iso] || 0))
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!technology || !hours) return alert("Preencha os campos!");
-
+    e.preventDefault()
+    setNotice(null)
+    setLoading(true)
     try {
-      setLoading(true);
-      const token = localStorage.getItem('token');
-      const response = await fetch("http://localhost:3000/studies", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          technology,
+      const data = await api('/studies', {
+        method: 'POST',
+        body: {
+          technology: technology.trim(),
           hours: parseFloat(hours),
-          date: new Date().toISOString().split('T')[0],
-          description: description || `Estudo de ${technology}`
-        }),
-      });
-
-      if (response.ok) {
-        alert("Estudo registrado!");
-        window.location.reload(); 
-      }
-    } catch (error) {
-      alert("Erro na conexão.");
+          date: todayStr,
+          description: description.trim() || `Estudo de ${technology.trim()}`,
+        },
+      })
+      setNotice(data.alert ? { type: 'warn', text: data.alert } : { type: 'success', text: 'Estudo registrado. Boa!' })
+      setTechnology('')
+      setHours('')
+      setDescription('')
+      await refresh()
+    } catch (err) {
+      setNotice({ type: 'error', text: err.message })
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   return (
-    <div className="flex h-screen bg-black text-white font-sans overflow-hidden">
-      
-      {/* BARRA LATERAL */}
-      <aside className="w-64 bg-zinc-950 p-8 flex flex-col justify-between border-r border-zinc-800 z-10">
-        <div>
-          <h1 className="text-xl font-bold mb-12 text-center text-zinc-300">
-            Dev<span className="text-purple-400">Track</span>
-          </h1>
-          <nav className="space-y-6">
-            <button className="flex items-center gap-4 text-xl font-bold italic text-white transition w-full text-left">
-              <div className="w-7 h-7 rounded-full border-2 border-white flex items-center justify-center bg-black">
-                <BookOpenText size={16} />
-              </div>
-              APRENDIZADO
-            </button>
-            <button onClick={() => navigate('/historico')} className="flex items-center gap-4 text-xl font-bold italic text-zinc-400 hover:text-white transition w-full text-left">
-              <div className="w-7 h-7 rounded-full border-2 border-zinc-600 flex items-center justify-center bg-black">
-                <History size={16} className="text-zinc-500" />
-              </div>
-              HISTÓRICO
-            </button>
-            <button onClick={() => navigate('/perfil')} className="flex items-center gap-4 text-xl font-bold italic text-zinc-400 hover:text-white transition w-full text-left">
-              <div className="w-7 h-7 rounded-full border-2 border-zinc-600 flex items-center justify-center bg-black">
-                <User size={16} className="text-zinc-500" />
-              </div>
-              PERFIL
-            </button>
-          </nav>
-        </div>
-       <div className="border-t border-zinc-800 pt-6 space-y-4">
+    <div className="flex flex-col gap-6">
+      <header>
+        <p className="text-muted">{greeting()}, {firstName}.</p>
+        <h1 className="mt-1 font-display text-4xl font-bold tracking-tight md:text-5xl">O que você estudou hoje?</h1>
+      </header>
 
-            <button className="flex items-center gap-4 text-lg font-bold italic text-zinc-400 hover:text-white transition w-full text-left">
-            <div className="w-6 h-6 rounded-full border-2 border-zinc-600 flex items-center justify-center bg-black">
-              <Settings size={14} className="text-zinc-600" />
+      <div className="grid gap-6 lg:grid-cols-5">
+        <form onSubmit={handleSubmit} className="card flex flex-col gap-5 p-6 lg:col-span-3">
+          <div>
+            <label htmlFor="tech" className="field-label">Tecnologia</label>
+            <input id="tech" list="techs" required maxLength={60} placeholder="Ex.: React, Java, SQL" className="field" value={technology} onChange={(e) => setTechnology(e.target.value)} />
+            <datalist id="techs">{topTechs.map((t) => <option key={t} value={t} />)}</datalist>
+            {topTechs.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {topTechs.map((t) => (
+                  <button type="button" key={t} onClick={() => setTechnology(t)} className="rounded-full border border-line px-3 py-1 text-sm text-muted transition-colors hover:border-ember hover:text-ink">{t}</button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label htmlFor="hours" className="field-label">Quantas horas?</label>
+            <input id="hours" type="number" required min="0.1" max="16" step="0.1" inputMode="decimal" placeholder="Ex.: 1.5" className="field" value={hours} onChange={(e) => setHours(e.target.value)} />
+            <div className="mt-2 flex flex-wrap gap-2">
+              {QUICK_HOURS.map((h) => (
+                <button type="button" key={h} onClick={() => setHours(String(h))} className={`rounded-full border px-3 py-1 text-sm transition-colors ${parseFloat(hours) === h ? 'border-ember text-ember' : 'border-line text-muted hover:border-ember hover:text-ink'}`}>{fmtHours(h)}</button>
+              ))}
             </div>
-            CONFIGURAÇÕES
-          </button>
+          </div>
 
-          <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 bg-white text-black font-bold py-3 rounded hover:bg-zinc-200 transition">
-            <LogOut size={16} /> SAIR DO APP
-          </button>
+          <div>
+            <label htmlFor="desc" className="field-label">O que você aprendeu? (opcional)</label>
+            <textarea id="desc" rows={3} className="field resize-none" placeholder="Ex.: hooks, useEffect e custom hooks" value={description} onChange={(e) => setDescription(e.target.value)} />
+          </div>
+
+          {notice && <Notice type={notice.type}>{notice.text}</Notice>}
+          <button type="submit" disabled={loading} className="btn-primary text-lg">{loading ? 'Registrando...' : 'Registrar estudo'}</button>
+        </form>
+
+        <div className="flex flex-col gap-6 lg:col-span-2">
+          <section className="card flex items-center gap-4 p-6">
+            <Flame size={44} strokeWidth={1.5} className={streak > 0 ? 'text-ember' : 'text-line'} />
+            <div>
+              <p className="font-display text-5xl font-bold leading-none">{streak}</p>
+              <p className="mt-1 text-sm text-muted">
+                {streak === 1 ? 'dia de ofensiva' : 'dias de ofensiva'}
+                {todayHours === 0 && streak > 0 && ' · estude hoje para manter'}
+              </p>
+            </div>
+          </section>
+
+          <section className="card p-6">
+            <div className="mb-4 flex items-baseline justify-between">
+              <h2 className="font-display text-lg font-semibold">Últimos 7 dias</h2>
+              <span className="text-sm text-muted">hoje: {fmtHours(todayHours)}</span>
+            </div>
+            <div className="flex h-32 items-end gap-2">
+              {week.map((d) => {
+                const h = byDate[d.iso] || 0
+                const isToday = d.iso === todayStr
+                return (
+                  <div key={d.iso} className="flex h-full flex-1 flex-col items-center justify-end gap-1.5">
+                    <span className="text-xs text-muted">{h > 0 ? h : ''}</span>
+                    <div className={`w-full rounded-md ${h === 0 ? 'bg-raised' : isToday ? 'bg-ember' : 'bg-heat-2'}`} style={{ height: h === 0 ? 4 : `${Math.max((h / weekMax) * 100, 6)}%` }} />
+                  </div>
+                )
+              })}
+            </div>
+            <div className="mt-2 flex gap-2 text-xs text-muted">
+              {week.map((d) => <span key={d.iso} className="flex-1 text-center">{d.label}</span>)}
+            </div>
+          </section>
         </div>
-      </aside>
+      </div>
 
-      {/* CONTEÚDO */}
-      <main className="flex-1 p-10 overflow-y-auto bg-black relative">
-        
-        {/* GRÁFICO DINÂMICO */}
-        <div className="absolute top-10 right-10 w-64 bg-zinc-900 rounded-xl border border-zinc-800 p-5 shadow-2xl hidden lg:block">
-          <div className="flex items-center gap-2 mb-4 justify-center">
-            <BarChart3 size={16} className="text-zinc-400"/>
-            <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-300">Horas na Semana</h3>
-          </div>
-          
-          <div className="h-24 flex items-end justify-between gap-2 px-1">
-            {weeklyHours.map((h, i) => (
-              <div 
-                key={i} 
-                className={`w-full rounded-t-sm relative transition-all duration-500 ${h > 0 ? 'bg-purple-500' : 'bg-zinc-800'}`}
-                style={{ height: `${Math.min((h / 16) * 100, 100)}%` }} 
-              >
-                {h > 0 && <span className="absolute -top-4 left-0 w-full text-center text-[8px] text-zinc-400">{h}h</span>}
-              </div>
-            ))}
-          </div>
-          <div className="flex justify-between text-[9px] text-zinc-500 font-bold mt-2 px-1 uppercase">
-            <span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span><span>D</span>
-          </div>
+      <section className="card p-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-display text-lg font-semibold">Últimas {weeks} semanas</h2>
+          <HeatLegend />
         </div>
-
-        <div className="h-full flex flex-col items-center justify-center pt-24 pb-10">
-          <div className="w-full max-w-2xl flex flex-col gap-8">
-            <h2 className="text-4xl font-black italic uppercase tracking-tighter text-white text-center">
-              O que aprendeu hoje, {userName}?
-            </h2>
-
-            <form onSubmit={handleSubmit} className="w-full bg-zinc-900 p-8 rounded-2xl border border-zinc-800 shadow-xl space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                    <CodeXml size={14} /> Linguagem
-                  </label>
-                  <input type="text" placeholder="Ex: Java" className="bg-black rounded-lg p-3 border border-zinc-700 text-white outline-none focus:ring-2 focus:ring-purple-500" value={technology} onChange={(e) => setTechnology(e.target.value)} />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                    <Clock3 size={14} /> Horas
-                  </label>
-                  <input type="number" step="0.1" placeholder="Ex: 2" className="bg-black rounded-lg p-3 border border-zinc-700 text-white outline-none focus:ring-2 focus:ring-purple-500" value={hours} onChange={(e) => setHours(e.target.value)} />
-                </div>
-              </div>
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                  <AlignLeft size={14} /> Descrição
-                </label>
-                <textarea rows="3" placeholder="Como foram seus estudos? Descreva brevemente..." className="bg-black rounded-lg p-4 border border-zinc-700 text-sm text-white outline-none focus:ring-2 focus:ring-purple-500 resize-none" value={description} onChange={(e) => setDescription(e.target.value)}></textarea>
-              </div>
-              <button type="submit" disabled={loading} className="w-full bg-purple-600 text-white font-bold py-4 rounded-lg text-lg hover:bg-purple-500 transition disabled:opacity-50">
-                {loading ? "Registrando..." : "REGISTRAR ESTUDO 🔥"}
-              </button>
-            </form>
-          </div>
-        </div>
-      </main>
-    </div> 
-  );
+        <Heatmap byDate={byDate} weeks={weeks} />
+      </section>
+    </div>
+  )
 }

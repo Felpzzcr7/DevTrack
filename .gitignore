@@ -32,3 +32,9 @@ yarn-error.log*
 *.sln
 *.sw?
 *.bru
+# SQLite (modo WAL cria estes arquivos extras) e segredo gerado automaticamente
+*.db
+*.db-wal
+*.db-shm
+.jwt_secret
+backend/data/

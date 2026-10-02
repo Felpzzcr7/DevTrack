@@ -1,0 +1,14 @@
+# Para rodar em um servidor/VPS ou testar localmente:  docker compose up -d --build
+services:
+  devtrack:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      JWT_SECRET: troque-por-um-texto-longo-e-aleatorio
+    volumes:
+      - devtrack-data:/data   # o banco SQLite vive aqui e sobrevive a atualizações
+    restart: unless-stopped
+
+volumes:
+  devtrack-data:

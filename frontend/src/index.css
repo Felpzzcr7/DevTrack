@@ -1,1 +1,79 @@
 @import "tailwindcss";
+@import "@fontsource-variable/bricolage-grotesque";
+@import "@fontsource-variable/instrument-sans";
+
+/* ---------- Tokens de design ----------
+   Para trocar a cor da marca (ex.: voltar ao roxo), mude --color-ember
+   e a rampa --color-heat-1..4. O resto do app acompanha. */
+@theme {
+  --font-display: "Bricolage Grotesque Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Instrument Sans Variable", ui-sans-serif, system-ui, sans-serif;
+
+  --color-night: #0f1523;
+  --color-surface: #161e31;
+  --color-raised: #1d2740;
+  --color-line: #2b3756;
+  --color-ink: #eaeffa;
+  --color-muted: #8e9bbb;
+
+  --color-ember: #ff8a3d;
+  --color-ember-soft: #ffa062;
+  --color-ok: #5bd6a0;
+  --color-danger: #ff6b6b;
+
+  /* rampa do mapa de calor: nenhum estudo -> muito estudo */
+  --color-heat-0: #1d2740;
+  --color-heat-1: #5b3b3a;
+  --color-heat-2: #a8512f;
+  --color-heat-3: #ff7a2e;
+  --color-heat-4: #ffc27a;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-night font-sans text-ink antialiased;
+    min-height: 100dvh;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-ember);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, ::before, ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-line bg-surface;
+  }
+  .field-label {
+    @apply mb-1.5 block text-sm font-medium text-muted;
+  }
+  .field {
+    @apply w-full rounded-xl border border-line bg-night px-4 py-3 text-ink transition-colors placeholder:text-muted/60 focus:border-ember focus:ring-2 focus:ring-ember/25 focus:outline-none;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-ember px-5 py-3 font-semibold text-night transition-colors hover:bg-ember-soft disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-line px-4 py-2.5 font-medium text-ink transition-colors hover:bg-raised;
+  }
+}
+
+/* Única animação de entrada do app: o mapa de calor acende coluna por coluna */
+@keyframes cell-in {
+  from { opacity: 0; transform: scale(0.6); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.cell-in {
+  animation: cell-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
