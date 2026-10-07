@@ -50,7 +50,7 @@ export default function Profile() {
         {numbers.map((n) => (
           <div key={n.label} className="card p-5">
             <p className="text-sm text-muted">{n.label}</p>
-            <p className="mt-1 truncate font-display text-2xl font-bold md:text-3xl">{n.value}</p>
+            <p className="mt-1 break-words font-display text-xl font-bold leading-tight md:text-2xl">{n.value}</p>
           </div>
         ))}
       </div>

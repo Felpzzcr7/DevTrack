@@ -72,7 +72,28 @@ export const addDays = (d, n) => {
 }
 
 const nf = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 })
-export const fmtHours = (h) => `${nf.format(h)} h`
+
+// Formata uma duração (guardada em horas, ex.: 2.45) de forma legível:
+//   0.77 -> "46 minutos" | 1 -> "1 hora" | 2.45 -> "2 horas 27 minutos"
+// Só mostra horas quando já completou ao menos 1 hora.
+export function fmtHours(h) {
+  const totalMin = Math.round((Number(h) || 0) * 60)
+  const hh = Math.floor(totalMin / 60)
+  const mm = totalMin % 60
+  const hPart = `${nf.format(hh)} ${hh === 1 ? 'hora' : 'horas'}`
+  const mPart = `${mm} ${mm === 1 ? 'minuto' : 'minutos'}`
+  if (hh === 0) return mPart
+  return mm === 0 ? hPart : `${hPart} ${mPart}`
+}
+// Versão compacta para espaços pequenos (rótulos de gráfico): "8 min", "1h27", "2h"
+export function fmtHoursShort(h) {
+  const totalMin = Math.round((Number(h) || 0) * 60)
+  const hh = Math.floor(totalMin / 60)
+  const mm = totalMin % 60
+  if (hh === 0) return `${mm} min`
+  return mm === 0 ? `${hh}h` : `${hh}h${String(mm).padStart(2, '0')}`
+}
+
 export const fmtNumber = (n) => nf.format(n)
 
 export function greeting() {
