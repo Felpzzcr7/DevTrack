@@ -2,13 +2,19 @@ import { useEffect, useState } from 'react'
 import { Flame } from 'lucide-react'
 import Heatmap, { HeatLegend } from '../components/Heatmap'
 import Notice from '../components/Notice'
+import TagSelect from '../components/TagSelect'
 import { useMediaQuery } from '../hooks/useMediaQuery'
-import { api, addDays, fmtHours, getUserName, greeting, hoursByDate, hoursByTech, toISODate } from '../api'
+import { api, addDays, fmtHours, fmtHoursShort, getUserName, greeting, hoursByDate, toISODate } from '../api'
 
-const QUICK_HOURS = [0.5, 1, 2, 3]
+// atalhos de tempo, em minutos
+const QUICK_MINUTES = [15, 30, 60, 120, 180]
+const MAX_MINUTES = 16 * 60
 
-// lista de estudos + estatísticas (a data local é enviada para a ofensiva valer em qualquer fuso)
-const fetchAll = () => Promise.all([api('/studies'), api(`/studies/stats?today=${toISODate()}`)])
+// estudos + estatísticas + tags do usuário (a data local é enviada para a ofensiva valer em qualquer fuso)
+const fetchAll = () => Promise.all([api('/studies'), api(`/studies/stats?today=${toISODate()}`), api('/studies/tags')])
+
+// tag escolhida no select -> campo certo para o backend: id se já existe, nome se é nova
+const tagToPayload = (tag) => (tag.__isNew__ ? { tagName: tag.label } : { tagId: tag.value })
 
 export default function Aprendizado() {
   const firstName = getUserName().split(' ')[0]
@@ -17,25 +23,29 @@ export default function Aprendizado() {
 
   const [studies, setStudies] = useState([])
   const [streak, setStreak] = useState(0)
-  const [technology, setTechnology] = useState('')
-  const [hours, setHours] = useState('')
-  const [description, setDescription] = useState('')
+  const [tags, setTags] = useState([])
+  const [tag, setTag] = useState(null) // opção do select: { value, label, __isNew__? }
+  const [hoursInput, setHoursInput] = useState('')
+  const [minutesInput, setMinutesInput] = useState('')
+  const [anotacao, setAnotacao] = useState('')
   const [loading, setLoading] = useState(false)
   const [notice, setNotice] = useState(null) // { type, text }
 
   const refresh = async () => {
-    const [list, stats] = await fetchAll()
+    const [list, stats, tagList] = await fetchAll()
     setStudies(list)
     setStreak(stats.currentStreak)
+    setTags(tagList)
   }
 
   useEffect(() => {
     let alive = true
     fetchAll()
-      .then(([list, stats]) => {
+      .then(([list, stats, tagList]) => {
         if (!alive) return
         setStudies(list)
         setStreak(stats.currentStreak)
+        setTags(tagList)
       })
       .catch(console.error)
     return () => { alive = false }
@@ -44,7 +54,7 @@ export default function Aprendizado() {
   const byDate = hoursByDate(studies)
   const todayStr = toISODate()
   const todayHours = byDate[todayStr] || 0
-  const topTechs = hoursByTech(studies).slice(0, 5).map((t) => t.name)
+  const topTags = tags.slice(0, 5) // o backend já devolve da mais usada para a menos usada
 
   const week = Array.from({ length: 7 }, (_, i) => {
     const d = addDays(new Date(), i - 6)
@@ -52,24 +62,44 @@ export default function Aprendizado() {
   })
   const weekMax = Math.max(4, ...week.map((d) => byDate[d.iso] || 0))
 
+  const totalMinutes = (parseInt(hoursInput, 10) || 0) * 60 + (parseInt(minutesInput, 10) || 0)
+
+  const setQuick = (min) => {
+    setHoursInput(min >= 60 ? String(Math.floor(min / 60)) : '')
+    setMinutesInput(min % 60 ? String(min % 60) : '')
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setNotice(null)
+    if (!tag) {
+      setNotice({ type: 'error', text: 'Escolha uma tag ou crie uma nova.' })
+      return
+    }
+    if (totalMinutes <= 0) {
+      setNotice({ type: 'error', text: 'Informe pelo menos 1 minuto de estudo.' })
+      return
+    }
+    if (totalMinutes > MAX_MINUTES) {
+      setNotice({ type: 'error', text: 'O máximo por registro é 16 horas.' })
+      return
+    }
     setLoading(true)
     try {
       const data = await api('/studies', {
         method: 'POST',
         body: {
-          technology: technology.trim(),
-          hours: parseFloat(hours),
+          ...tagToPayload(tag),
+          hours: totalMinutes / 60,
           date: todayStr,
-          description: description.trim() || `Estudo de ${technology.trim()}`,
+          anotacao: anotacao.trim(),
         },
       })
       setNotice(data.alert ? { type: 'warn', text: data.alert } : { type: 'success', text: 'Estudo registrado. Boa!' })
-      setTechnology('')
-      setHours('')
-      setDescription('')
+      setTag(null)
+      setHoursInput('')
+      setMinutesInput('')
+      setAnotacao('')
       await refresh()
     } catch (err) {
       setNotice({ type: 'error', text: err.message })
@@ -88,31 +118,40 @@ export default function Aprendizado() {
       <div className="grid gap-6 lg:grid-cols-5">
         <form onSubmit={handleSubmit} className="card flex flex-col gap-5 p-6 lg:col-span-3">
           <div>
-            <label htmlFor="tech" className="field-label">Tecnologia</label>
-            <input id="tech" list="techs" required maxLength={60} placeholder="Ex.: React, Java, SQL" className="field" value={technology} onChange={(e) => setTechnology(e.target.value)} />
-            <datalist id="techs">{topTechs.map((t) => <option key={t} value={t} />)}</datalist>
-            {topTechs.length > 0 && (
+            <label htmlFor="tech" className="field-label">Assunto</label>
+            <TagSelect inputId="tech" tags={tags} value={tag} onChange={setTag} disabled={loading} />
+            {topTags.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
-                {topTechs.map((t) => (
-                  <button type="button" key={t} onClick={() => setTechnology(t)} className="rounded-full border border-line px-3 py-1 text-sm text-muted transition-colors hover:border-ember hover:text-ink">{t}</button>
+                {topTags.map((t) => (
+                  <button type="button" key={t.id} onClick={() => setTag({ value: t.id, label: t.nome })} className={`rounded-full border px-3 py-1 text-sm transition-colors ${tag?.value === t.id && !tag.__isNew__ ? 'border-ember text-ember' : 'border-line text-muted hover:border-ember hover:text-ink'}`}>{t.nome}</button>
                 ))}
               </div>
             )}
           </div>
 
           <div>
-            <label htmlFor="hours" className="field-label">Quantas horas?</label>
-            <input id="hours" type="number" required min="0.1" max="16" step="0.1" inputMode="decimal" placeholder="Ex.: 1.5" className="field" value={hours} onChange={(e) => setHours(e.target.value)} />
+            <span className="field-label">Quanto tempo?</span>
+            <div className="flex items-center gap-3">
+              <div className="flex flex-1 items-center gap-2">
+                <input id="hours" aria-label="Horas" type="number" min="0" max="16" step="1" inputMode="numeric" placeholder="0" className="field" value={hoursInput} onChange={(e) => setHoursInput(e.target.value)} />
+                <span className="text-muted">h</span>
+              </div>
+              <div className="flex flex-1 items-center gap-2">
+                <input id="minutes" aria-label="Minutos" type="number" min="0" max="59" step="1" inputMode="numeric" placeholder="0" className="field" value={minutesInput} onChange={(e) => setMinutesInput(e.target.value)} />
+                <span className="text-muted">min</span>
+              </div>
+            </div>
             <div className="mt-2 flex flex-wrap gap-2">
-              {QUICK_HOURS.map((h) => (
-                <button type="button" key={h} onClick={() => setHours(String(h))} className={`rounded-full border px-3 py-1 text-sm transition-colors ${parseFloat(hours) === h ? 'border-ember text-ember' : 'border-line text-muted hover:border-ember hover:text-ink'}`}>{fmtHours(h)}</button>
+              {QUICK_MINUTES.map((m) => (
+                <button type="button" key={m} onClick={() => setQuick(m)} className={`rounded-full border px-3 py-1 text-sm transition-colors ${totalMinutes === m ? 'border-ember text-ember' : 'border-line text-muted hover:border-ember hover:text-ink'}`}>{fmtHours(m / 60)}</button>
               ))}
             </div>
+            {totalMinutes > 0 && <p className="mt-2 text-sm text-muted">Total: {fmtHours(totalMinutes / 60)}</p>}
           </div>
 
           <div>
-            <label htmlFor="desc" className="field-label">O que você aprendeu? (opcional)</label>
-            <textarea id="desc" rows={3} className="field resize-none" placeholder="Ex.: hooks, useEffect e custom hooks" value={description} onChange={(e) => setDescription(e.target.value)} />
+            <label htmlFor="notes" className="field-label">Anotações (opcional)</label>
+            <textarea id="notes" rows={3} maxLength={2000} className="field resize-none" placeholder="Ex.: hooks, useEffect e custom hooks" value={anotacao} onChange={(e) => setAnotacao(e.target.value)} />
           </div>
 
           {notice && <Notice type={notice.type}>{notice.text}</Notice>}
@@ -142,7 +181,7 @@ export default function Aprendizado() {
                 const isToday = d.iso === todayStr
                 return (
                   <div key={d.iso} className="flex h-full flex-1 flex-col items-center justify-end gap-1.5">
-                    <span className="text-xs text-muted">{h > 0 ? h : ''}</span>
+                    <span className="whitespace-nowrap text-[10px] text-muted sm:text-xs">{h > 0 ? fmtHoursShort(h) : ''}</span>
                     <div className={`w-full rounded-md ${h === 0 ? 'bg-raised' : isToday ? 'bg-ember' : 'bg-heat-2'}`} style={{ height: h === 0 ? 4 : `${Math.max((h / weekMax) * 100, 6)}%` }} />
                   </div>
                 )

@@ -15,6 +15,11 @@ router.get("/profile", authMiddleware, (req, res) => {
     });
 });
 
+// perfil do usuário logado: dados, bio e foto
+router.get("/me", authMiddleware, authController.getMe);
+router.put("/bio", authMiddleware, authController.updateBio);
+router.put("/avatar", authMiddleware, authController.updateAvatar);
+router.delete("/avatar", authMiddleware, authController.deleteAvatar);
 
 module.exports = router;
 

@@ -72,7 +72,7 @@ export default function Historico() {
                     <span className="rounded-full bg-raised px-3 py-1 text-sm font-medium text-ember-soft">{s.technology}</span>
                     {s.description && <p className="mt-2 break-words text-ink/90">{s.description}</p>}
                   </div>
-                  <span className="font-display text-xl font-bold">{fmtHours(s.hours)}</span>
+                  <span className="max-w-[7rem] text-right font-display text-lg font-bold leading-tight md:max-w-none md:text-xl">{fmtHours(s.hours)}</span>
                   {confirmId === s.id ? (
                     <div className="flex gap-2 text-sm">
                       <button onClick={() => remove(s.id)} className="rounded-lg bg-danger px-3 py-1.5 font-semibold text-night">Apagar</button>

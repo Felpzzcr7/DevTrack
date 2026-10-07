@@ -10,6 +10,9 @@ router.post("/", authMiddleware, studyController.createStudy);
             //pega dados
 router.get("/", authMiddleware, studyController.getStudies);
 
+            //lista as tags do usuário (opções do select)
+router.get("/tags", authMiddleware, studyController.getTags);
+
             //rota dashboard
 router.get("/stats", authMiddleware, studyController.getDashboardStats);
 
