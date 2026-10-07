@@ -49,6 +49,7 @@ async function migrateLegacySessions() {
   );
 }
 
+<<<<<<< HEAD
 // Perfil do usuário: foto (data URL já reduzida pelo app) e bio. Como o CREATE TABLE acima não
 // altera tabelas que já existem, as colunas novas são adicionadas aqui, uma única vez.
 async function ensureProfileColumns() {
@@ -61,6 +62,8 @@ async function ensureProfileColumns() {
   }
 }
 
+=======
+>>>>>>> 2fec8a7086a8fe227e1d5f2c1dd3f4479860e910
 // Cria as tabelas se ainda não existirem. Roda uma vez por "partida" do servidor.
 let ready = null;
 function init() {
@@ -104,7 +107,10 @@ function init() {
         "write"
       )
       .then(migrateLegacySessions)
+<<<<<<< HEAD
       .then(ensureProfileColumns)
+=======
+>>>>>>> 2fec8a7086a8fe227e1d5f2c1dd3f4479860e910
       .catch((err) => {
         ready = null; // tenta de novo na próxima requisição
         throw err;
